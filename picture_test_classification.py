@@ -56,6 +56,8 @@ test_dataset = tf.keras.utils.image_dataset_from_directory(test_dir, labels=None
                                                             batch_size=batch_size,
                                                             image_size=(IMG_HEIGHT, IMG_WIDTH))
 
+train_dataset
+
 class_names = train_dataset.class_names
 print(class_names)
 
@@ -94,6 +96,9 @@ from tensorflow.keras import layers
 from tensorflow.keras.models import Sequential
 
 
+input_base= keras.Sequential([
+        keras.Input(shape=(250, 250, 3)) ])
+
 augmentation_model= Sequential([
   layers.Rescaling(1./255, input_shape=(IMG_HEIGHT, IMG_WIDTH, 3)),
   layers.RandomFlip(mode="horizontal_and_vertical"),
@@ -115,6 +120,10 @@ full_model_1 = Sequential([
   layers.Dense(128, activation='relu'),
   layers.Dense(len(class_names))#,activation='sigmoid')
 ])
+
+
+
+
 
 """standard loss fcn"""
 
@@ -290,4 +299,124 @@ https://www.tensorflow.org/tutorials/customization/custom_training_walkthrough#b
 https://www.tensorflow.org/tutorials/keras/overfit_and_underfit#strategies_to_prevent_overfitting
 
 https://www.tensorflow.org/tutorials/keras/keras_tuner
+
+https://www.tensorflow.org/guide/keras/customizing_what_happens_in_fit
+
+Test: model aus tutorial: https://www.tensorflow.org/guide/keras/writing_a_training_loop_from_scratch#low-level_handling_of_losses_tracked_by_the_model
+
+mit entsprechendem Datensatz einmal machen, dann mein Model entsprechend umbauen (channels nicht auf 3) und beides mal durchlaufen lassen, sehen was dann passiert.. Dann auch einmal die shape so anpassen noch
+
+Optimizer und loss fcn richtig wählen:
+Model neu aufsetzen: (identisch zu 1. Model)
 """
+
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras.models import Sequential
+
+
+input_base= keras.Sequential([
+        keras.Input(shape=(250, 250, 3)) ])
+
+augmentation_model= Sequential([
+  layers.Rescaling(1./255, input_shape=(IMG_HEIGHT, IMG_WIDTH, 3)),
+  layers.RandomFlip(mode="horizontal_and_vertical"),
+  layers.RandomRotation(0.3),
+  #layers.RandomContrast(0.1),
+  #layers.RandomZoom(0.1),
+  ])
+
+model = Sequential([
+  augmentation_model,
+  layers.Conv2D(16, 3, padding='same', activation='relu'),
+  layers.MaxPooling2D(),
+  layers.Conv2D(32, 3, padding='same', activation='relu'),
+  layers.MaxPooling2D(),
+  layers.Conv2D(64, 3, padding='same', activation='relu'),
+  layers.MaxPooling2D(),
+  layers.Dropout(0.2),
+  layers.Flatten(),
+  layers.Dense(128, activation='relu'),
+  layers.Dense(len(class_names))#,activation='sigmoid')
+])
+
+# Instantiate an optimizer to train the model.
+optimizer = keras.optimizers.Adam(learning_rate=1e-3)
+# Instantiate a loss function.
+loss_fn = keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+
+# Prepare the metrics.
+train_acc_metric = keras.metrics.SparseCategoricalAccuracy()
+val_acc_metric = keras.metrics.SparseCategoricalAccuracy()
+
+@tf.function
+def train_step(x, y):
+    #print('tutelü', tf.shape(x), tf.shape(y))
+    with tf.GradientTape() as tape:
+        logits = model(x, training=True)
+        #print('oooo', tf.shape(logits))
+        loss_value = loss_fn(y, logits)
+    grads = tape.gradient(loss_value, model.trainable_weights)
+    optimizer.apply_gradients(zip(grads, model.trainable_weights))
+    train_acc_metric.update_state(y, logits)
+    return loss_value
+
+@tf.function
+def test_step(x, y):
+    val_logits = model(x, training=False)
+    #print(val_logits)
+    val_acc_metric.update_state(y, val_logits)
+
+# Commented out IPython magic to ensure Python compatibility.
+import time
+
+epochs = 20
+train_accuracy=[]
+val_accuracy=[]
+
+for epoch in range(epochs):
+    #print("\nStart of epoch %d" % (epoch,))
+    start_time = time.time()
+
+    # Iterate over the batches of the dataset.
+    for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
+        #print('torooo', tf.shape(x_batch_train), tf.shape(y_batch_train))
+        loss_value = train_step(x_batch_train, y_batch_train)
+        #print(loss_value)
+
+        # Log every 200 batches.
+        if step % 200 == 0:
+            print(
+                "Training loss (for one batch) at step %d: %.4f"
+#                 % (step, float(loss_value))
+            )
+            print("Seen so far: %d samples" % ((step + 1) * batch_size))
+
+    # Display metrics at the end of each epoch.
+    train_acc = train_acc_metric.result()
+    print("Training acc over epoch: %.4f" % (float(train_acc),))
+    train_accuracy.append(train_acc)
+
+    # Reset training metrics at the end of each epoch
+    train_acc_metric.reset_states()
+
+    # Run a validation loop at the end of each epoch.
+    for x_batch_val, y_batch_val in validation_dataset:
+        test_step(x_batch_val, y_batch_val)
+
+    val_acc = val_acc_metric.result()
+    val_accuracy.append(val_acc)
+    val_acc_metric.reset_states()
+    print("Validation acc: %.4f" % (float(val_acc),))
+    print("Time taken: %.2fs" % (time.time() - start_time))
+
+fig, axes = plt.subplots(2, sharex=True, figsize=(12, 8))
+fig.suptitle('Training Metrics')
+
+axes[0].set_ylabel("Train_acc", fontsize=14)
+axes[0].plot(train_accuracy)
+
+axes[1].set_ylabel("Val_acc", fontsize=14)
+axes[1].set_xlabel("Epoch", fontsize=14)
+axes[1].plot(val_accuracy)
+plt.show()

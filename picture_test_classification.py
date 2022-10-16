@@ -410,13 +410,12 @@ for epoch in range(epochs):
     print("Validation acc: %.4f" % (float(val_acc),))
     print("Time taken: %.2fs" % (time.time() - start_time))
 
-fig, axes = plt.subplots(2, sharex=True, figsize=(12, 8))
-fig.suptitle('Training Metrics')
+plt.figure(figsize=(12, 8))
+plt.suptitle('Training and Validation Accuracy', fontsize=20)
 
-axes[0].set_ylabel("Train_acc", fontsize=14)
-axes[0].plot(train_accuracy)
+plt.ylabel("Accuracies", fontsize=20)
+plt.plot(train_accuracy,label='Training Accuracy')
+plt.plot(val_accuracy,label='Validation Accuracy')
+plt.legend(loc='lower right', fontsize=20)
 
-axes[1].set_ylabel("Val_acc", fontsize=14)
-axes[1].set_xlabel("Epoch", fontsize=14)
-axes[1].plot(val_accuracy)
 plt.show()
